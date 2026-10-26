@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code-to-Video 评测</title>
+<style>
+:root{
+  --bg:#f6f5f1; --card:#fff; --ink:#1c1f24; --ink2:#4b515a; --mute:#8c877e; --line:#e2ded5; --line2:#efece6;
+  --acc:#264b6e; --acc-soft:#e7eef5;
+  --an:#c4613b; --oa:#1e7a62; --ds:#2c5a8c; --A:#cf7a2b; --B:#3a6ea8;
+  --ok:#2e7b4e; --ok-s:#e3f1e8; --bad:#b23a2a; --bad-s:#fbebe8; --warn:#9c6510; --warn-s:#fcf1dc;
+  --mono:"SF Mono",Menlo,Consolas,monospace; --top:56px;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif;color:var(--ink);background:var(--bg);font-size:14px;line-height:1.5}
+a{color:var(--acc);text-decoration:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+select{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink)}
+kbd{font-family:var(--mono);font-size:11px;padding:0 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;background:#fff;color:var(--ink2)}
+.mono{font-family:var(--mono)}
+.muted{color:var(--mute)}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;line-height:20px;padding:0 8px;border-radius:10px;background:var(--line2);color:var(--ink2);white-space:nowrap}
+.chip.ok{background:var(--ok-s);color:var(--ok)}.chip.bad{background:var(--bad-s);color:var(--bad)}.chip.warn{background:var(--warn-s);color:var(--warn)}.chip.going{background:#fff1d8;color:var(--warn)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+
+/* ---------- top bar ---------- */
+header{position:sticky;top:0;z-index:30;height:var(--top);display:flex;align-items:center;gap:16px;padding:0 22px;background:rgba(246,245,241,.94);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.brand{font-weight:700;font-size:15.5px;white-space:nowrap}
+nav.tabs{display:flex;gap:2px;background:#ebe8e0;border-radius:9px;padding:3px}
+nav.tabs a{padding:5px 15px;border-radius:7px;color:var(--ink2);font-size:13.5px;white-space:nowrap}
+nav.tabs a.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.grow{flex:1}
+.status{font-size:12.5px;color:var(--ink2);white-space:nowrap}
+.live{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--mute);white-space:nowrap}
+.live .dot{background:#bbb}.live.on .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(46,123,78,.18)}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1c1f24;color:#fff;font-size:13px;padding:8px 14px;border-radius:8px;display:none;align-items:center;gap:12px;z-index:60;box-shadow:0 6px 20px rgba(0,0,0,.2)}
+.toast.on{display:flex}.toast button{color:#9fd3ff;font-weight:600}
+
+main{padding:20px 22px 80px;max-width:1720px;margin:0 auto}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+.seg a{padding:5px 12px;font-size:13px;color:var(--ink2);border-right:1px solid var(--line)}
+.seg a:last-child{border-right:0}.seg a.on{background:var(--ink);color:#fff}
+
+/* ---------- overview ---------- */
+.qsec{margin-bottom:26px}
+details.qsec>summary{list-style:none;cursor:pointer}
+details.qsec>summary::-webkit-details-marker{display:none}
+details.qsec>summary .qhead h2::before{content:"▸";display:inline-block;width:16px;color:var(--mute);transition:transform .15s}
+details.qsec[open]>summary .qhead h2::before{transform:rotate(90deg)}
+details.qsec:not([open]){margin-bottom:10px;opacity:.75}
+.qhead .fold{font-size:12px;color:var(--mute)}
+.qhead{display:flex;align-items:baseline;gap:10px;margin:0 0 10px}
+.qhead h2{margin:0;font-size:17px}
+.qhead .lv{font-size:12px;color:var(--mute)}
+.qhead a.cmp{margin-left:auto;font-size:12.5px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;align-items:start}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;transition:box-shadow .15s,transform .15s;color:inherit}
+.card:hover{box-shadow:0 6px 18px rgba(0,0,0,.08);transform:translateY(-1px)}
+.thumb{position:relative;aspect-ratio:16/9;background:#15171b;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.thumb img{width:100%;height:100%;object-fit:contain;display:block}
+.thumb .bar2{position:absolute;left:0;bottom:0;height:3px;background:#fff;width:0;opacity:.9}
+.thumb .wait{color:#a2a8b0;font-size:12.5px;text-align:center;line-height:1.8}
+.spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:sp 1s linear infinite;margin:0 auto}
+@keyframes sp{to{transform:rotate(360deg)}}
+.cbody{padding:9px 11px 10px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.cbody>*{min-width:0}
+.who span:not(.dot):not(.cond){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.who{display:flex;align-items:center;gap:7px;font-weight:600;font-size:13.5px;white-space:nowrap;min-width:0}
+.who .cond{font-weight:400;font-size:12px;color:var(--mute);margin-left:auto;flex:none}
+.stats{display:flex;gap:12px;font-size:12px;color:var(--mute)}
+.stats b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.chips{display:flex;gap:5px;flex-wrap:wrap}
+
+/* ---------- compare ---------- */
+.pick{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tag{display:inline-flex;width:22px;height:22px;border-radius:6px;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:#fff;flex:none}
+.tag.A{background:var(--A)}.tag.B{background:var(--B)}
+.swap{border:1px solid var(--line);border-radius:7px;padding:4px 10px;background:#fff}
+.presets{display:flex;gap:5px;flex-wrap:wrap;font-size:12px;color:var(--mute);align-items:center}
+.presets a{font-size:12px;padding:2px 9px;border:1px solid var(--line);border-radius:11px;background:#fff;color:var(--ink2)}
+.presets a:hover{border-color:var(--ink2)}
+.tally{display:flex;gap:16px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px}
+.tally b{font-size:16px;font-variant-numeric:tabular-nums}
+.syncbar{display:flex;gap:8px;align-items:center;margin-left:auto}
+.syncbar button{border:1px solid var(--line);border-radius:7px;padding:4px 11px;background:#fff;font-size:12.5px}
+.syncbar button.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+.syncbar input{width:200px}
+.row{display:grid;grid-template-columns:150px 1fr 1fr;gap:14px;margin-bottom:16px;align-items:start}
+.row.many{grid-template-columns:1fr}
+.rowh h3{margin:0;font-size:15px}.rowh .lv{font-size:12px;color:var(--mute)}
+.vote{display:flex;gap:5px;margin-top:10px}
+.vote button{flex:1;padding:5px 0;border:1px solid var(--line);border-radius:7px;background:#fff;font-size:12.5px;color:var(--ink2)}
+.vote button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.vbox{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;align-self:start}
+.vbox .vh{display:flex;align-items:center;gap:8px;padding:8px 11px;font-size:13px;font-weight:600;border-bottom:1px solid var(--line2)}
+.vbox .vh .cond{font-weight:400;font-size:12px;color:var(--mute);margin-left:auto}
+.vbox video{display:block;width:100%;background:#15171b;max-height:60vh}
+.vbox .none{aspect-ratio:16/9;max-height:42vh;width:100%;background:#15171b;color:#a2a8b0;display:flex;align-items:center;justify-content:center;font-size:12.5px}
+.vbox .vf{display:flex;gap:12px;flex-wrap:wrap;align-items:center;padding:8px 11px;font-size:12px;color:var(--mute);border-top:1px solid var(--line2)}
+.vbox .vf b{color:var(--ink);font-variant-numeric:tabular-nums;font-weight:600}
+.vbox .vf b.win{color:var(--ok)}
+.vbox .vf a{margin-left:auto}
+.grid-all{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(360px,1fr))}
+
+/* ---------- run detail ---------- */
+.rv{display:grid;grid-template-columns:minmax(440px,45%) 1fr;gap:0;height:calc(100vh - var(--top));margin:-20px -22px -80px}
+.rl{overflow:auto;padding:16px 20px 40px;background:#fff;border-right:1px solid var(--line)}
+.rr{display:flex;flex-direction:column;min-height:0}
+.crumb{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:13px}
+.crumb a.back{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink2)}
+.crumb h2{margin:0;font-size:17px;flex-basis:100%}
+.crumb .nav{margin-left:auto;display:flex;gap:6px}
+.crumb .nav a{padding:4px 10px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink2);font-size:12.5px}
+.player video{display:block;width:100%;border-radius:8px;background:#15171b;max-height:50vh}
+.player .none{aspect-ratio:16/9;border-radius:8px;background:#15171b;color:#a2a8b0;display:flex;align-items:center;justify-content:center}
+.strip{display:grid;grid-template-columns:repeat(12,1fr);gap:3px;margin-top:6px}
+.strip button{border-radius:3px;overflow:hidden;outline:2px solid transparent;outline-offset:-2px;position:relative}
+.strip button.cur{outline-color:var(--acc)}
+.strip img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;background:#222}
+.strip span{position:absolute;left:3px;bottom:1px;font-size:9.5px;color:#fff;text-shadow:0 0 3px #000}
+.facts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0 10px}
+.fact{background:var(--bg);border-radius:8px;padding:8px 10px}
+.fact .l{font-size:11.5px;color:var(--mute)}.fact .v{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}.fact .s{font-size:11.5px;color:var(--ink2)}
+.mix{display:flex;height:8px;border-radius:4px;overflow:hidden;margin:4px 0 6px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--ink2)}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+details.sec{border-top:1px solid var(--line2);padding:10px 0 0;margin-top:12px}
+details.sec summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--ink2);list-style:none;display:flex;justify-content:space-between}
+details.sec summary::after{content:"展开";font-weight:400;color:var(--mute);font-size:12px}
+details.sec[open] summary::after{content:"收起"}
+details.sec pre{white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:12px;background:var(--bg);padding:10px 12px;border-radius:7px;margin:8px 0 0;max-height:320px;overflow:auto}
+.sibs{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+.sibs a{font-size:12px;padding:2px 9px;border:1px solid var(--line);border-radius:11px;color:var(--ink2);background:#fff;display:inline-flex;align-items:center;gap:5px}
+.sibs a.cur{background:var(--ink);color:#fff;border-color:var(--ink)}
+.finding{font-size:12.5px;padding:4px 0;border-bottom:1px solid var(--line2)}
+.finding code{font-family:var(--mono);font-size:11.5px;background:var(--bg);padding:0 4px;border-radius:3px}
+.sev{font-size:11px;padding:0 6px;border-radius:4px;margin-right:5px}
+.sev.error{background:var(--bad-s);color:var(--bad)}.sev.warning{background:var(--warn-s);color:var(--warn)}.sev.info{background:var(--line2);color:var(--mute)}
+
+.tbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:#fff;border-bottom:1px solid var(--line)}
+.tbar .f{display:flex;gap:4px;flex-wrap:wrap}
+.tbar .f button{font-size:12.5px;padding:3px 10px;border:1px solid var(--line);border-radius:13px;color:var(--ink2);background:#fff}
+.tbar .f button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.tbar input{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--line);border-radius:7px;width:190px}
+.tbar .cnt{margin-left:auto;font-size:12px;color:var(--mute)}
+.tbar .xp{font-size:12px;color:var(--acc)}
+.mm{display:flex;gap:1px;height:18px;padding:5px 16px;background:#fff;border-bottom:1px solid var(--line)}
+.mm i{flex:1;min-width:2px;border-radius:1px;cursor:pointer;opacity:.85}
+.mm i:hover{opacity:1;transform:scaleY(1.35)}
+.trace{flex:1;overflow:auto;padding:12px 16px 80px;background:var(--bg)}
+.loading{padding:40px;text-align:center;color:var(--mute)}
+.st{display:grid;grid-template-columns:38px 1fr;gap:8px;margin-bottom:6px}
+.st .ix{font-size:11px;color:var(--mute);text-align:right;padding-top:8px;font-variant-numeric:tabular-nums}
+.st .bd{background:#fff;border:1px solid var(--line);border-left:3px solid var(--c,#999);border-radius:7px;padding:7px 11px;min-width:0}
+.st.think .bd{background:transparent;border:0;border-left:2px dashed #c8c3b8;border-radius:0;color:#6c675f;font-style:italic;padding:2px 11px}
+.st.say .bd{border-left-color:var(--acc);background:var(--acc-soft)}
+.st.final .bd{border-left-color:var(--ok);background:var(--ok-s)}
+.st.err .bd{background:var(--bad-s)}
+.st.hit .bd{box-shadow:0 0 0 2px #f0c53f}
+.st .hd{display:flex;gap:8px;align-items:baseline;min-width:0;cursor:pointer}
+.st .tg{font-size:11px;font-weight:700;color:var(--c);letter-spacing:.03em;white-space:nowrap}
+.st .ar{font-family:var(--mono);font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:4.8em;overflow:hidden;flex:1;min-width:0}
+.st.open .ar{max-height:none}
+.st .tx{white-space:pre-wrap;word-break:break-word}
+.st .more{font-size:11.5px;color:var(--acc);margin-top:4px;cursor:pointer;display:inline-block}
+.st pre.out{display:none;white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:11.5px;background:#f5f4ef;border-radius:6px;padding:8px 10px;margin:6px 0 0;max-height:440px;overflow:auto;color:#3a3f46}
+.st.open pre.out{display:block}
+.st img.seen{display:block;max-width:min(100%,440px);margin-top:7px;border-radius:6px;border:1px solid var(--line);cursor:zoom-in}
+.lb{position:fixed;inset:0;background:rgba(10,12,15,.9);display:none;align-items:center;justify-content:center;z-index:70;cursor:zoom-out}
+.lb.on{display:flex}.lb img{max-width:94vw;max-height:94vh;border-radius:6px}
+.empty{padding:60px 20px;text-align:center;color:var(--mute)}
+@media (max-width:1100px){.rv{grid-template-columns:1fr;height:auto}.rr{height:85vh}.row{grid-template-columns:1fr}.facts{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">Code-to-Video 评测</div>
+  <span class="seg" id="roundSeg"><a href="../r1/" data-r="r1">第一轮</a><a href="../r2/" data-r="r2">第二轮</a></span>
+  <nav class="tabs" id="tabs"><a data-v="overview">总览</a><a data-v="compare">对比</a><a data-v="run">单次运行</a></nav>
+  <div class="grow"></div>
+  <span class="status" id="status"></span>
+  <button class="live on" id="live" title="每 60 秒检查新数据"><span class="dot"></span>自动刷新</button>
+</header>
+<main id="app"><div class="empty">加载中…</div></main>
+<div class="toast" id="toast"><span id="toastMsg"></span><button id="toastBtn">更新</button></div>
+<div class="lb" id="lb"><img alt=""></div>
+
+<script>
+/* ===== state & data ===== */
+let META = null, RUNS = [], BYID = {};
+const TRACE = {};                 // id -> {rev, steps, prompt}
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const FAM = {anthropic:'var(--an)', openai:'var(--oa)', deepseek:'var(--ds)'};
+const KIND = {shell:['#5b6470','命令'], edit:['#8a5cc7','写文件'], read:['#3d8bd0','读取'], view:['#d08a2a','看图'], skill:['#2f9e8f','Skill'], err:['#b23a2a','报错']};
+const store = {
+  get votes(){ return JSON.parse(localStorage.c2vVotes || '{}'); },
+  set votes(v){ localStorage.c2vVotes = JSON.stringify(v); },
+};
+const fmtT = s => s == null ? '–' : s >= 3600 ? (s/3600).toFixed(1)+' 小时' : s >= 60 ? (s/60).toFixed(1)+' 分' : s+' 秒';
+const fmtK = n => !n ? '–' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? Math.round(n/1e3)+'k' : String(n);
+const agents = () => Object.keys(META.agents);
+const qids = () => Object.keys(META.queries);
+const label = r => `${META.agents[r.agent].model} · ${META.conds[r.cond]}`;
+const isPortrait = r => r.video && r.video.h > r.video.w;
+const costOf = r => { const u = r.usage || {}; return u.cost_usd != null ? '$' + u.cost_usd.toFixed(2) : fmtK(u.in); };
+const costName = r => (r.usage || {}).cost_usd != null ? '成本' : '输入';
+function state(r){ return !r.done ? ['going','运行中'] : r.media ? ['ok','已出片'] : ['bad','无成品']; }
+const askText = Q => Q.ask ? `要求 ${Q.ask} 秒` : '未限时长';
+function durChip(r){
+  if (!r.video) return '';
+  const ask = META.queries[r.q].ask, d = r.video.dur, off = ask ? Math.abs(d - ask) / ask : 0;
+  return `<span class="chip ${off > .15 ? 'warn' : ''}">${d}s${off > .15 ? ' / 要求 ' + ask + 's' : ''}</span>`;
+}
+function checkChip(r){
+  const c = r.check; if (!c) return '';
+  return c.errors ? `<span class="chip bad">check ${c.errors} 错</span>` : c.warnings ? `<span class="chip warn">check ${c.warnings} 警告</span>` : '<span class="chip ok">check 通过</span>';
+}
+function whoDot(r){ return `<span class="dot" style="background:${FAM[META.agents[r.agent].family]}"></span>`; }
+
+/* ===== router: every screen is a URL, so back/forward and reload work ===== */
+// #/overview?cond=all   #/compare?a=cc:bare&b=codex:bare   #/compare?mode=q&q=Q1&cond=all   #/run/<id>?f=all
+function parse(){
+  const h = location.hash.replace(/^#\/?/, '') || 'overview';
+  const [path, qs] = h.split('?');
+  const [view, id] = path.split('/');
+  return {view: ['overview','compare','run'].includes(view) ? view : 'overview', id: id ? decodeURIComponent(id) : null, p: new URLSearchParams(qs || '')};
+}
+function href(view, params = {}, id){
+  const qs = new URLSearchParams(Object.entries(params).filter(([,v]) => v != null && v !== '')).toString();
+  return '#/' + view + (id ? '/' + encodeURIComponent(id) : '') + (qs ? '?' + qs : '');
+}
+function go(view, params, id, replace){
+  const h = href(view, params, id);
+  if (replace) { history.replaceState(null, '', h); render(); } else location.hash = h;
+}
+window.addEventListener('hashchange', render);
+
+let lastRunView = null;           // remembered for the "单次运行" tab
+function render(){
+  if (!META) return;
+  const {view, id, p} = parse();
+  $$('#tabs a').forEach(a => {
+    a.classList.toggle('on', a.dataset.v === view);
+    a.href = a.dataset.v === 'run' ? (lastRunView || href('run', {}, (RUNS.find(r => r.media) || RUNS[0])?.id)) : href(a.dataset.v);
+  });
+  stopVideos();
+  if (view === 'overview') renderOverview(p);
+  else if (view === 'compare') renderCompare(p);
+  else { lastRunView = location.hash; renderRun(id, p); }
+  window.scrollTo(0, 0);
+}
+function stopVideos(){ $$('video').forEach(v => { v.pause(); v.removeAttribute('src'); v.load(); }); }
+
+/* ===== overview ===== */
+function renderOverview(p){
+  const cond = p.get('cond') || 'all';
+  let h = `<div class="bar"><span class="muted">条件</span><span class="seg">${[['all','全部'],['bare','无 skill'],['hf','HyperFrames']].map(([k,l]) => `<a href="${href('overview',{cond:k==='all'?null:k})}" class="${cond===k?'on':''}">${l}</a>`).join('')}</span>
+    <span class="muted" style="margin-left:auto;font-size:12.5px">鼠标在缩略图上横向移动可预览全片 · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 切换视图</span></div>`;
+  const openSet = JSON.parse(localStorage.getItem("c2vOpen") || "{}");
+  const isOpen = q => (q in openSet) ? openSet[q] : !META.queries[q].fold;
+  const order = [...qids().filter(q => !META.queries[q].fold), ...qids().filter(q => META.queries[q].fold)];
+  for (const q of order) {
+    const Q = META.queries[q];
+    const rs = RUNS.filter(r => r.q === q && (cond === 'all' || r.cond === cond))
+                   .sort((a,b) => agents().indexOf(a.agent) - agents().indexOf(b.agent) || a.cond.localeCompare(b.cond));
+    if (!rs.length) continue;
+    const nd = rs.filter(r => r.done).length;
+    h += `<details class="qsec" data-q="${q}" ${isOpen(q) ? 'open' : ''}><summary><div class="qhead"><h2>${q} ${esc(Q.title)}</h2><span class="lv">${esc(Q.level)} · ${askText(Q)}</span><span class="fold">${nd}/${rs.length} 完成${Q.fold ? ' · 已归档，默认折叠' : ''}</span>
+      <a class="cmp" href="${href('compare',{mode:'q',q, cond:cond==='all'?null:cond})}">这一题全部并排看 →</a></div></summary><div class="cards">`;
+    for (const r of rs) {
+      const [sc, st] = state(r);
+      const thumb = r.media
+        ? `<div class="thumb" data-frames='${JSON.stringify(r.media.frames)}'><img src="${r.media.thumb}" loading="lazy" alt=""><i class="bar2"></i></div>`
+        : `<div class="thumb"><div class="wait">${r.done ? '没有产出 MP4' : '<div class="spin"></div>运行中 · ' + fmtT(r.secs) + '<br>' + r.n_tools + ' 次调用'}</div></div>`;
+      h += `<a class="card" href="${href('run',{},r.id)}">${thumb}<div class="cbody">
+        <div class="who">${whoDot(r)}<span>${esc(META.agents[r.agent].model)}</span><span class="cond">${esc(META.conds[r.cond])}</span></div>
+        <div class="chips"><span class="chip ${sc}">${st}</span>${durChip(r)}${checkChip(r)}</div>
+        <div class="stats"><span><b>${fmtT(r.secs)}</b></span><span><b>${r.n_tools}</b> 次调用${r.n_err ? ` <span style="color:var(--bad)">${r.n_err} 报错</span>` : ''}</span><span>${costName(r)} <b>${costOf(r)}</b></span></div>
+        <div class="muted" style="font-size:12px">${esc(r.stack)}</div></div></a>`;
+    }
+    h += '</div></details>';
+  }
+  $('#app').innerHTML = h;
+  $$('details.qsec').forEach(d => d.addEventListener('toggle', () => {
+    const o = JSON.parse(localStorage.getItem("c2vOpen") || "{}"); o[d.dataset.q] = d.open; localStorage.setItem("c2vOpen", JSON.stringify(o));
+  }));
+  $$('.thumb[data-frames]').forEach(el => {
+    const fr = JSON.parse(el.dataset.frames), img = el.querySelector('img'), bar = el.querySelector('.bar2'), orig = img.src;
+    el.addEventListener('mousemove', e => { const b = el.getBoundingClientRect(), x = Math.min(.999, Math.max(0, (e.clientX - b.left) / b.width)); img.src = fr[Math.floor(x * fr.length)]; bar.style.width = x * 100 + '%'; });
+    el.addEventListener('mouseleave', () => { img.src = orig; bar.style.width = 0; });
+  });
+}
+
+/* ===== compare ===== */
+const PRESETS = [['dsh:bare','dshp:bare','V4.1-Flash vs V4-Pro'],['cc:bare','codex:bare','Opus 5.5 vs Astra'],['cc:bare','dsh:bare','Opus 5.5 vs DeepSeek'],['codex:bare','dsh:bare','Astra vs DeepSeek'],
+                 ['cc:bare','cc:hf','Opus 有无 skill'],['codex:bare','codex:hf','Astra 有无 skill'],['dsh:bare','dsh:hf','DeepSeek 有无 skill'],
+                 ['cc:bare','cc5:bare','Opus 5.5 vs 5'],['codex:bare','sol:bare','Astra vs Sol']];
+function cfgOpts(sel){
+  return agents().flatMap(a => Object.keys(META.conds).map(c => a + ':' + c))
+    .filter(k => RUNS.some(r => r.agent + ':' + r.cond === k))
+    .map(k => { const [a,c] = k.split(':'); return `<option value="${k}" ${k===sel?'selected':''}>${esc(META.agents[a].model)} · ${esc(META.conds[c])}</option>`; }).join('');
+}
+function vbox(r, side, wins){
+  if (!r) return `<div class="vbox"><div class="none">没有这次运行</div></div>`;
+  const body = r.media ? `<video src="${r.media.video}" poster="${r.media.thumb}" muted playsinline preload="metadata"></video>`
+                       : `<div class="none">${r.done ? '没有产出 MP4' : '运行中 · ' + r.n_tools + ' 次调用'}</div>`;
+  const w = wins || {};
+  return `<div class="vbox">
+    <div class="vh">${side ? `<span class="tag ${side}">${side}</span>` : whoDot(r)}${esc(META.agents[r.agent].model)}<span class="cond">${esc(META.conds[r.cond])}</span></div>${body}
+    <div class="vf"><span>用时 <b class="${w.t||''}">${fmtT(r.secs)}</b></span><span>调用 <b class="${w.n||''}">${r.n_tools}</b></span><span>${costName(r)} <b class="${w.c||''}">${costOf(r)}</b></span>${checkChip(r)}<a href="${href('run',{},r.id)}">看轨迹 →</a></div></div>`;
+}
+function renderCompare(p){
+  const mode = p.get('mode') === 'q' ? 'q' : 'ab';
+  const modeSeg = `<span class="seg"><a href="${href('compare',{a:p.get('a'),b:p.get('b')})}" class="${mode==='ab'?'on':''}">A / B 两组</a><a href="${href('compare',{mode:'q',q:p.get('q')||qids()[0]})}" class="${mode==='q'?'on':''}">按题看全部</a></span>`;
+  const sync = `<span class="syncbar"><button class="pri" data-sync="play">▶ 同步播放</button><button data-sync="pause">暂停</button><button data-sync="restart">从头</button><input type="range" id="seek" min="0" max="1000" value="0"><span class="mono muted" id="seekT" style="font-size:12px">0.0s</span></span>`;
+  if (mode === 'q') {
+    const q = qids().includes(p.get('q')) ? p.get('q') : qids()[0], cond = p.get('cond') || 'all';
+    const rs = RUNS.filter(r => r.q === q && (cond === 'all' || r.cond === cond)).sort((a,b) => agents().indexOf(a.agent) - agents().indexOf(b.agent) || a.cond.localeCompare(b.cond));
+    $('#app').innerHTML = `<div class="bar">${modeSeg}
+      <select id="qSel">${qids().map(k => `<option value="${k}" ${k===q?'selected':''}>${k} ${esc(META.queries[k].title)}</option>`).join('')}</select>
+      <span class="seg">${[['all','全部'],['bare','无 skill'],['hf','HyperFrames']].map(([k,l]) => `<a href="${href('compare',{mode:'q',q,cond:k==='all'?null:k})}" class="${cond===k?'on':''}">${l}</a>`).join('')}</span>${sync}</div>
+      <div class="grid-all">${rs.map(r => vbox(r)).join('') || '<div class="empty">这一题还没有运行</div>'}</div>`;
+    $('#qSel').onchange = e => go('compare', {mode:'q', q:e.target.value, cond:cond==='all'?null:cond});
+  } else {
+    const a = p.get('a') || 'cc:bare', b = p.get('b') || 'codex:bare', pair = a + '|' + b;
+    const find = (k,q) => { const [ag,c] = k.split(':'); return RUNS.find(r => r.agent===ag && r.cond===c && r.q===q); };
+    const votes = store.votes; let wa = 0, wb = 0, tie = 0;
+    const rows = qids().map(q => {
+      const ra = find(a,q), rb = find(b,q), v = votes[pair+'|'+q], Q = META.queries[q];
+      if (v === 'a') wa++; else if (v === 'b') wb++; else if (v === 't') tie++;
+      const lower = (x,y) => x == null || y == null ? ['',''] : x < y ? ['win',''] : x > y ? ['','win'] : ['',''];
+      const t = lower(ra?.done ? ra.secs : null, rb?.done ? rb.secs : null), n = lower(ra?.n_tools, rb?.n_tools);
+      const cv = r => r ? ((r.usage||{}).cost_usd ?? (r.usage||{}).in) : null, c = lower(cv(ra), cv(rb));
+      return `<div class="row"><div class="rowh"><h3>${q} ${esc(Q.title)}</h3><div class="lv">${esc(Q.level)} · ${askText(Q)}</div>
+          <div class="vote">${[['a','A 更好'],['t','差不多'],['b','B 更好']].map(([k,l]) => `<button data-vote="${pair}|${q}" data-v="${k}" class="${v===k?'on':''}">${l}</button>`).join('')}</div></div>
+        ${vbox(ra,'A',{t:t[0],n:n[0],c:c[0]})}${vbox(rb,'B',{t:t[1],n:n[1],c:c[1]})}</div>`;
+    }).join('');
+    $('#app').innerHTML = `<div class="bar">${modeSeg}
+        <span class="pick"><span class="tag A">A</span><select id="selA">${cfgOpts(a)}</select><a class="swap" href="${href('compare',{a:b,b:a})}" title="交换">⇄</a><span class="tag B">B</span><select id="selB">${cfgOpts(b)}</select></span>${sync}</div>
+      <div class="bar presets">常用：${PRESETS.map(([x,y,l]) => `<a href="${href('compare',{a:x,b:y})}">${l}</a>`).join('')}</div>
+      <div class="tally"><span>你的判断</span><span><span class="tag A">A</span> 更好 <b>${wa}</b></span><span>差不多 <b>${tie}</b></span><span><span class="tag B">B</span> 更好 <b>${wb}</b></span><span class="muted" style="font-size:12px;margin-left:auto">投票存在本浏览器，每组 A/B 分开计；绿色数字表示这一项更省</span></div>${rows}`;
+    $('#selA').onchange = e => go('compare', {a:e.target.value, b});
+    $('#selB').onchange = e => go('compare', {a, b:e.target.value});
+    $$('[data-vote]').forEach(btn => btn.onclick = () => {
+      const vs = store.votes, key = btn.dataset.vote; vs[key] = vs[key] === btn.dataset.v ? undefined : btn.dataset.v; store.votes = vs;
+      $$(`[data-vote="${key}"]`).forEach(x => x.classList.toggle('on', vs[key] === x.dataset.v));
+      const all = store.votes; let A=0,B=0,T=0; qids().forEach(q => { const v = all[pair+'|'+q]; if(v==='a')A++; else if(v==='b')B++; else if(v==='t')T++; });
+      const bs = $$('.tally b'); bs[0].textContent = A; bs[1].textContent = T; bs[2].textContent = B;
+    });
+  }
+  bindSync();
+}
+function bindSync(){
+  const vids = () => $$('#app video');
+  $$('[data-sync]').forEach(b => b.onclick = () => vids().forEach(v => {
+    if (b.dataset.sync === 'play') v.play(); else if (b.dataset.sync === 'pause') v.pause(); else { v.currentTime = 0; v.play(); }
+  }));
+  const seek = $('#seek'); if (!seek) return;
+  seek.oninput = () => { const vs = vids(), max = Math.max(...vs.map(v => v.duration || 0)) || 1, t = seek.value / 1000 * max; vs.forEach(v => v.currentTime = Math.min(v.duration || 0, t)); $('#seekT').textContent = t.toFixed(1) + 's'; };
+  const v0 = vids()[0]; if (v0) v0.ontimeupdate = () => { const max = Math.max(...vids().map(v => v.duration || 0)) || 1; seek.value = Math.round(v0.currentTime / max * 1000); $('#seekT').textContent = v0.currentTime.toFixed(1) + 's'; };
+}
+
+/* ===== run detail ===== */
+async function loadTrace(r){
+  if (TRACE[r.id] && TRACE[r.id].rev === r.rev) return TRACE[r.id];
+  const d = await fetch(`traces/${encodeURIComponent(r.id)}.json?rev=${r.rev}`).then(x => x.json());
+  return (TRACE[r.id] = {rev: r.rev, steps: d.steps, prompt: d.prompt});
+}
+function renderRun(id, p){
+  const r = BYID[id] || RUNS.find(x => x.media) || RUNS[0];
+  if (!r) { $('#app').innerHTML = '<div class="empty">还没有运行</div>'; return; }
+  if (r.id !== id) { go('run', {}, r.id, true); return; }
+  const A = META.agents[r.agent], Q = META.queries[r.q], u = r.usage || {}, v = r.video || {};
+  const order = RUNS.slice().sort((x,y) => qids().indexOf(x.q) - qids().indexOf(y.q) || agents().indexOf(x.agent) - agents().indexOf(y.agent) || x.cond.localeCompare(y.cond));
+  const i = order.findIndex(x => x.id === r.id), prev = order[(i - 1 + order.length) % order.length], next = order[(i + 1) % order.length];
+  const sibs = order.filter(x => x.q === r.q);
+  const player = r.media
+    ? `<video id="pv" controls src="${r.media.video}" poster="${r.media.thumb}" preload="metadata"></video>
+       <div class="strip">${r.media.frames.map((f,k) => `<button data-t="${r.media.times[k]}"><img src="${f}" loading="lazy" alt=""><span>${r.media.times[k]}s</span></button>`).join('')}</div>`
+    : `<div class="none">${r.done ? '这次运行没有产出 MP4' : '运行中…'}</div>`;
+  const usage = u.cost_usd != null ? ['成本', '$' + u.cost_usd.toFixed(2), `输入 ${fmtK(u.in)} · 输出 ${fmtK(u.out)}`]
+                                   : ['输入 token', fmtK(u.in), `缓存 ${fmtK(u.cached)} · 输出 ${fmtK(u.out)}${u.reasoning ? ' · 推理 ' + fmtK(u.reasoning) : ''}`];
+  const back = sessionStorage.c2vBack || href('overview');
+  $('#app').innerHTML = `<div class="rv">
+    <div class="rl">
+      <div class="crumb"><a class="back" href="${back}">← 返回</a>
+        <span class="chip ${state(r)[0]}">${state(r)[1]}</span><span class="chip">${esc(META.conds[r.cond])}</span>${checkChip(r)}
+        <span class="nav"><a href="${href('run',{},prev.id)}" title="上一个（←）">← 上一个</a><a href="${href('run',{},next.id)}" title="下一个（→）">下一个 →</a></span>
+        <h2><span style="color:${FAM[A.family]}">${esc(A.model)}</span> · ${esc(r.q)} ${esc(Q.title)}</h2></div>
+      <div class="player">${player}</div>
+      <div class="facts">
+        <div class="fact"><div class="l">用时</div><div class="v">${fmtT(r.secs)}</div><div class="s">${esc(A.harness)}${r.exit != null ? ' · exit ' + r.exit : ''}</div></div>
+        <div class="fact"><div class="l">${usage[0]}</div><div class="v">${usage[1]}</div><div class="s">${usage[2]}</div></div>
+        <div class="fact"><div class="l">工具调用</div><div class="v">${r.n_tools}</div><div class="s">报错 ${r.n_err} · 看图 ${r.n_views}</div></div>
+        <div class="fact"><div class="l">成片</div><div class="v">${v.dur ? v.dur + 's' : '–'}</div><div class="s">${v.w ? v.w + '×' + v.h + (Q.ask ? ' · 要求 ' + Q.ask + 's' : ' · 未限时长') : '–'}</div></div>
+      </div>
+      <div id="mix"></div>
+      <div style="margin-top:14px;font-size:13px;font-weight:600;color:var(--ink2)">同一题的其他运行</div>
+      <div class="sibs">${sibs.map(x => `<a href="${href('run',{},x.id)}" class="${x.id===r.id?'cur':''}">${whoDot(x)}${esc(META.agents[x.agent].model)} · ${x.cond==='hf'?'HF':'无'}</a>`).join('')}</div>
+      <details class="sec"><summary>发给模型的 prompt</summary><pre id="prompt">加载中…</pre></details>
+      <details class="sec" ${r.check?.errors ? 'open' : ''}><summary>HyperFrames check ${r.check ? `（${r.check.errors ?? 0} 错 / ${r.check.warnings ?? 0} 警告）` : ''}</summary>
+        ${r.check ? ((r.check.findings || []).map(f => `<div class="finding"><span class="sev ${esc(f.sev)}">${esc(f.sev)}</span><code>${esc(f.code)}</code> ${esc(f.msg)}</div>`).join('') || '<div class="finding">没有发现问题</div>') : '<div class="finding muted">不是 HyperFrames 项目，或运行尚未结束</div>'}</details>
+    </div>
+    <div class="rr">
+      <div class="tbar"><div class="f" id="tf">${[['all','全部'],['tool','只看动作'],['view','看图'],['edit','写文件'],['err','报错'],['text','说明与思考']].map(([k,l]) => `<button data-f="${k}" class="${(p.get('f')||'all')===k?'on':''}">${l}</button>`).join('')}</div>
+        <input id="tq" placeholder="搜索轨迹，如 render、check" value="${esc(p.get('s')||'')}">
+        <button class="xp" id="xpAll">全部展开</button><span class="cnt" id="tcnt"></span></div>
+      <div class="mm" id="mm"></div>
+      <div class="trace" id="trace"><div class="loading">正在加载轨迹…</div></div>
+    </div></div>`;
+  const pv = $('#pv');
+  $$('.strip button').forEach(b => b.onclick = () => { if (pv) { pv.currentTime = +b.dataset.t; pv.pause(); } });
+  if (pv) pv.ontimeupdate = () => { const bs = $$('.strip button'); let cur = 0; bs.forEach((b,k) => { if (+b.dataset.t <= pv.currentTime + .01) cur = k; }); bs.forEach((b,k) => b.classList.toggle('cur', k === cur)); };
+  loadTrace(r).then(t => { if (parse().view === 'run' && parse().id === r.id && $('#trace')) fillTrace(r, t, p); }).catch(() => { if ($('#trace')) $('#trace').innerHTML = '<div class="loading">轨迹加载失败，刷新页面重试</div>'; });
+}
+function stepHtml(s, i){
+  if (s.k === 'tool') {
+    const [c] = s.err ? KIND.err : (KIND[s.kind] || KIND.shell);
+    const long = (s.arg || '').split('\n').length > 3 || (s.arg || '').length > 280;
+    return `<div class="st tool ${s.err ? 'err' : ''}" data-i="${i}" data-kind="${s.err ? 'err' : s.kind}" style="--c:${c}">
+      <div class="ix">${i + 1}</div><div class="bd"><div class="hd"><span class="tg">${esc(s.name)}</span><span class="ar">${esc(s.arg)}</span></div>
+      ${s.img ? `<img class="seen" src="${s.img}" loading="lazy" alt="">` : ''}
+      ${(s.out || long) ? `<span class="more">${s.out ? '展开输出（' + s.out.length + ' 字符）' : '展开'}</span>` : ''}${s.out ? `<pre class="out">${esc(s.out)}</pre>` : ''}</div></div>`;
+  }
+  const name = {think:'思考', say:'说明', final:'结束'}[s.k];
+  return `<div class="st ${s.k}" data-i="${i}" data-kind="text"><div class="ix">${name}</div><div class="bd"><div class="tx">${esc(s.text)}</div></div></div>`;
+}
+function fillTrace(r, t, p){
+  $('#prompt').textContent = t.prompt;
+  const tools = t.steps.filter(s => s.k === 'tool'), mix = {};
+  tools.forEach(s => { const k = s.err ? 'err' : s.kind; mix[k] = (mix[k] || 0) + 1; });
+  $('#mix').innerHTML = `<div class="mix">${Object.entries(mix).map(([k,n]) => `<i style="flex:${n};background:${KIND[k][0]}" title="${KIND[k][1]} ${n}"></i>`).join('')}</div>
+    <div class="legend">${Object.entries(mix).map(([k,n]) => `<span><i style="background:${KIND[k][0]}"></i>${KIND[k][1]} ${n}</span>`).join('')}<span class="muted">技术栈：${esc(r.stack)}</span></div>`;
+  $('#mm').innerHTML = t.steps.map((s,i) => s.k === 'tool' ? `<i data-j="${i}" style="background:${(s.err ? KIND.err : (KIND[s.kind] || KIND.shell))[0]}" title="${i+1} · ${esc(s.name)}"></i>` : '').join('');
+  $('#trace').innerHTML = t.steps.map(stepHtml).join('') || '<div class="loading">没有记录到步骤</div>';
+  const setOpen = (st, on) => { st.classList.toggle('open', on); const m = st.querySelector('.more'); if (m && m.textContent !== '展开') m.textContent = on ? '收起' : m.textContent.replace('收起', '展开输出'); };
+  $$('#trace .st.tool').forEach(st => { const tog = () => setOpen(st, !st.classList.contains('open')); st.querySelector('.hd').onclick = tog; const m = st.querySelector('.more'); if (m) m.onclick = tog; });
+  $$('#trace img.seen').forEach(im => im.onclick = () => { $('#lb img').src = im.src; $('#lb').classList.add('on'); });
+  $$('#mm i').forEach(m => m.onclick = () => { const el = $(`#trace .st[data-i="${m.dataset.j}"]`); if (!el) return; el.style.display = ''; el.scrollIntoView({block:'center', behavior:'smooth'}); el.classList.add('hit'); setTimeout(() => el.classList.remove('hit'), 1400); });
+  let allOpen = false;
+  $('#xpAll').onclick = () => { allOpen = !allOpen; $$('#trace .st.tool').forEach(st => setOpen(st, allOpen)); $('#xpAll').textContent = allOpen ? '全部收起' : '全部展开'; };
+  const apply = () => {
+    const f = $('#tf .on').dataset.f, q = $('#tq').value.trim().toLowerCase(); let shown = 0, hits = 0;
+    $$('#trace .st').forEach(el => {
+      const k = el.dataset.kind, isTool = el.classList.contains('tool');
+      let ok = f === 'all' || (f === 'tool' && isTool) || (f === 'text' && !isTool) || k === f;
+      const hit = q && el.textContent.toLowerCase().includes(q); if (q && !hit) ok = false;
+      el.style.display = ok ? '' : 'none'; el.classList.toggle('hit', !!hit); if (ok) shown++; if (hit) hits++;
+    });
+    $('#tcnt').textContent = q ? `${hits} 处匹配` : `显示 ${shown} / ${t.steps.length} 步`;
+  };
+  const keepInUrl = () => { const {id} = parse(); const f = $('#tf .on').dataset.f, s = $('#tq').value.trim(); history.replaceState(null, '', href('run', {f: f === 'all' ? null : f, s: s || null}, id)); lastRunView = location.hash; };
+  $$('#tf button').forEach(b => b.onclick = () => { $$('#tf button').forEach(x => x.classList.toggle('on', x === b)); apply(); keepInUrl(); });
+  let tmr; $('#tq').oninput = () => { apply(); clearTimeout(tmr); tmr = setTimeout(keepInUrl, 400); };
+  apply();
+}
+
+/* ===== remember where "返回" goes: the last non-run screen ===== */
+window.addEventListener('hashchange', () => { if (parse().view !== 'run') sessionStorage.c2vBack = location.hash || href('overview'); });
+
+/* ===== keyboard ===== */
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input,select,textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'Escape') { $('#lb').classList.remove('on'); return; }
+  if (e.key === '1') location.hash = href('overview');
+  else if (e.key === '2') location.hash = href('compare');
+  else if (e.key === '3') $$('#tabs a')[2].click();
+  else if (parse().view === 'run' && e.key === 'ArrowLeft') $('.crumb .nav a:first-child')?.click();
+  else if (parse().view === 'run' && e.key === 'ArrowRight') $('.crumb .nav a:last-child')?.click();
+  else if (parse().view === 'run' && e.key === 'Backspace') { e.preventDefault(); $('.crumb a.back')?.click(); }
+});
+$('#lb').onclick = () => $('#lb').classList.remove('on');
+
+/* ===== data loading: refresh never redraws under you; it offers an update ===== */
+function summary(){
+  const done = RUNS.filter(r => r.done).length, made = RUNS.filter(r => r.done && r.media).length;
+  $('#status').textContent = `${done}/${RUNS.length} 已结束 · ${made} 出片`;
+}
+function digest(d){ return d.runs.map(r => r.id + ':' + r.rev + ':' + (r.media ? 1 : 0)).join(','); }
+let current = '', pending = null;
+async function fetchIndex(){ return fetch('index.json?t=' + Date.now()).then(x => x.json()); }
+function apply(d){
+  $$('#roundSeg a').forEach(a => a.classList.toggle('on', a.dataset.r === (d.meta.round || 'r1')));
+  META = d.meta; RUNS = d.runs; BYID = Object.fromEntries(RUNS.map(r => [r.id, r])); current = digest(d); summary();
+}
+async function poll(){
+  if (!$('#live').classList.contains('on')) return;
+  let d; try { d = await fetchIndex(); } catch { return; }
+  if (digest(d) === current) return;
+  const view = parse().view, playing = $$('video').some(v => !v.paused);
+  if (view === 'overview' && !playing) { apply(d); render(); return; }
+  pending = d;
+  const newly = d.runs.filter(r => r.done).length - RUNS.filter(r => r.done).length;
+  $('#toastMsg').textContent = newly > 0 ? `有 ${newly} 个运行刚结束` : '有新的进度';
+  $('#toast').classList.add('on');
+}
+$('#toastBtn').onclick = () => { if (pending) { apply(pending); pending = null; render(); } $('#toast').classList.remove('on'); };
+$('#live').onclick = () => $('#live').classList.toggle('on');
+setInterval(poll, 60000);
+
+fetchIndex().then(d => {
+  apply(d);
+  if (!location.hash) history.replaceState(null, '', href('overview'));
+  if (parse().view !== 'run') sessionStorage.c2vBack = location.hash;
+  render();
+}).catch(() => { $('#app').innerHTML = '<div class="empty">数据加载失败：确认 index.json 存在，刷新重试</div>'; });
+</script>
+</body>
+</html>
